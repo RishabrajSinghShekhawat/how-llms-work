@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Under the Hood: How Large Language Models (LLMs) Work</title>
+  <!-- Tailwind CSS -->
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background-color: #090d16;
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+    code, pre, .mono-font {
+      font-family: var(--font-mono);
+    }
+    /* Glow utilities */
+    .glow-cyan {
+      box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.45);
+    }
+    .glow-purple {
+      box-shadow: 0 0 25px -5px rgba(168, 85, 247, 0.45);
+    }
+    .glow-amber {
+      box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.45);
+    }
+    .text-glow {
+      text-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+    /* Animated gradient border */
+    .gradient-border {
+      background: linear-gradient(135deg, rgba(56,189,248,0.3), rgba(168,85,247,0.1), rgba(6,182,212,0.3));
+      padding: 1px;
+      border-radius: 1rem;
+    }
+    .card-glass {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    /* Matrix node pulse */
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 0.2; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.05); }
+    }
+    .animate-pulse-slow {
+      animation: pulse-slow 4s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="selection:bg-cyan-500 selection:text-slate-900">
+
+  <!-- Progress Bar Top -->
+  <div id="read-progress" class="fixed top-0 left-0 h-1 bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 z-50 transition-all duration-100" style="width: 0%;"></div>
+
+  <!-- Navigation -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <a href="#" class="flex items-center gap-3 group">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 p-[1px] shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
+          <div class="w-full h-full bg-slate-950 rounded-[11px] flex items-center justify-center">
+            <svg class="w-5 h-5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex flex-col">
+          <span class="font-bold text-base tracking-tight text-white flex items-center gap-1.5">
+            LLM Deep Dive <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">Masterclass</span>
+          </span>
+          <span class="text-xs text-slate-400">Interactive Architecture & Principles</span>
+        </div>
+      </a>
+
+      <!-- Desktop Nav Links -->
+      <nav class="hidden md:flex items-center space-x-1 lg:space-x-2 text-sm">
+        <a href="#mental-model" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition">Intuition</a>
+        <a href="#tokenization" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition">Tokens</a>
+        <a href="#embeddings" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition">Embeddings</a>
+        <a href="#attention" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition">Attention</a>
+        <a href="#probabilities" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition">Sampling</a>
+        <a href="#training" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition">Training</a>
+        <a href="#quiz" class="px-3 py-1.5 rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/40 border border-cyan-800/50 transition">Quiz</a>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        <span class="hidden sm:inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-1 rounded-full">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> Live Interactive Engine
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="relative pt-32 pb-20 md:pt-40 md:pb-28 overflow-hidden">
+    <!-- Background Canvas Mesh -->
+    <canvas id="hero-neural-canvas" class="absolute inset-0 w-full h-full pointer-events-none opacity-40"></canvas>
+    
+    <!-- Radial Glows -->
+    <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-cyan-600/15 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute top-1/3 left-1/3 w-[450px] h-[450px] bg-purple-600/15 rounded-full blur-3xl pointer-events-none"></div>
+
+    <div class="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700 text-xs text-slate-300 mb-6 shadow-xl">
+        <span class="flex h-2 w-2 rounded-full bg-cyan-400"></span>
+        Zero prerequisites required • Built for visual learners & engineers
+      </div>
+      
+      <h1 class="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white mb-6 leading-tight">
+        How Do <span class="bg-gradient-to-r from-cyan-400 via-sky-300 to-purple-400 bg-clip-text text-transparent text-glow">Large Language Models</span> Actually Work?
+      </h1>
+      
+      <p class="text-lg sm:text-xl text-slate-300 max-w-3xl mx-auto mb-10 leading-relaxed font-light">
+        They write poetry, debug complex code, and pass medical exams. But behind the curtain, there is no conscious mind. There is only a magnificent, high-dimensional machine predicting <strong class="text-white font-semibold">one token at a time</strong>. Let's peel back every layer step by step.
+      </p>
+
+      <!-- Interactive Quick Metric Bar -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto mb-10 text-left">
+        <div class="card-glass p-4 rounded-xl border border-slate-800">
+          <div class="text-xs uppercase text-slate-400 font-mono mb-1">Core Formula</div>
+          <div class="text-lg font-bold text-cyan-400">$P(w_t \mid w_{1:t-1})$</div>
+          <div class="text-xs text-slate-400 mt-0.5">Next token probability</div>
+        </div>
+        <div class="card-glass p-4 rounded-xl border border-slate-800">
+          <div class="text-xs uppercase text-slate-400 font-mono mb-1">Scale</div>
+          <div class="text-lg font-bold text-purple-400">7B to 1.8T+</div>
+          <div class="text-xs text-slate-400 mt-0.5">Adjustable parameters</div>
+        </div>
+        <div class="card-glass p-4 rounded-xl border border-slate-800">
+          <div class="text-xs uppercase text-slate-400 font-mono mb-1">Architecture</div>
+          <div class="text-lg font-bold text-sky-400">Transformer</div>
+          <div class="text-xs text-slate-400 mt-0.5">Self-attention engine</div>
+        </div>
+        <div class="card-glass p-4 rounded-xl border border-slate-800">
+          <div class="text-xs uppercase text-slate-400 font-mono mb-1">Training Diet</div>
+          <div class="text-lg font-bold text-emerald-400">15+ Trillion</div>
+          <div class="text-xs text-slate-400 mt-0.5">Tokens of human knowledge</div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-center gap-4">
+        <a href="#mental-model" class="px-6 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold transition shadow-lg shadow-cyan-500/25 flex items-center gap-2 group">
+          <span>Start the Journey</span>
+          <svg class="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </a>
+        <a href="#tokenization" class="px-6 py-3.5 rounded-xl card-glass hover:bg-slate-800 text-slate-200 font-semibold border border-slate-700 transition flex items-center gap-2">
+          <span>Jump to Interactive Tokenizer</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 1: The Core Mental Model -->
+  <section id="mental-model" class="py-20 border-t border-slate-800/80 relative">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 text-cyan-400 font-mono text-sm tracking-wider uppercase mb-2">
+        <span class="w-6 h-px bg-cyan-500"></span> Chapter 01
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mb-6">The Fundamental Mental Model</h2>
+      
+      <p class="text-slate-300 text-lg leading-relaxed max-w-3xl mb-12">
+        Before touching mathematics or matrices, you must understand what an LLM actually is—and what it isn't. Many people mistakenly think an LLM is a database of facts or a sentient brain. In reality, it is something far more elegant: <strong class="text-cyan-300">The world's most sophisticated pattern completion system.</strong>
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-8 items-stretch mb-12">
+        <!-- Card 1: What People Think -->
+        <div class="card-glass p-7 rounded-2xl border border-red-500/20 relative overflow-hidden flex flex-col justify-between">
+          <div class="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-2xl"></div>
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center font-bold">✕</div>
+              <h3 class="text-xl font-bold text-white">The Misconception: A "Thinker" or "Search Engine"</h3>
+            </div>
+            <p class="text-slate-400 text-sm leading-relaxed mb-4">
+              People assume the AI browses an internal encyclopedia, verifies logical truth, thinks about its opinions, and outputs retrieved facts.
+            </p>
+            <ul class="space-y-2 text-sm text-slate-400">
+              <li class="flex items-start gap-2">
+                <span class="text-red-400 mt-0.5">•</span> It does not store paragraphs of text like a hard drive.
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-red-400 mt-0.5">•</span> It has no concept of "objective truth"—only statistical correlations in language.
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-red-400 mt-0.5">•</span> It cannot pause to think unless prompted to generate step-by-step tokens.
+              </li>
+            </ul>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-800 text-xs font-mono text-red-300">
+            Result: Confusing hallucinations with intentional lies.
+          </div>
+        </div>
+
+        <!-- Card 2: What Actually Happens -->
+        <div class="card-glass p-7 rounded-2xl border border-cyan-500/30 relative overflow-hidden flex flex-col justify-between">
+          <div class="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl"></div>
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold">✓</div>
+              <h3 class="text-xl font-bold text-white">The Reality: Autocomplete on Trillions of Dimensions</h3>
+            </div>
+            <p class="text-slate-300 text-sm leading-relaxed mb-4">
+              An LLM is a giant mathematical function. Given a sequence of preceding words, its entire objective is to answer one question:
+            </p>
+            <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-700/80 text-cyan-300 font-mono text-sm mb-4">
+              "Based on everything human beings have ever written, what single piece of text most likely comes next?"
+            </div>
+            <p class="text-slate-400 text-sm">
+              Because human language contains deep reasoning, logic, code, sentiment, and nuance, predicting the next word with extreme accuracy requires the model to simulate reasoning itself.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-800 text-xs font-mono text-cyan-400">
+            Insight: Intelligence emerges from ultra-high-dimensional compression.
+          </div>
+        </div>
+      </div>
+
+      <!-- The 4-Step Pipeline Visualizer -->
+      <div class="card-glass p-8 rounded-2xl border border-slate-800">
+        <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
+          <span>The End-to-End LLM Lifecycle at a Glance</span>
+        </h3>
+        <p class="text-slate-400 text-sm mb-8">Every query you send to ChatGPT, Claude, or Gemini travels through these exact 4 stages:</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative">
+          <!-- Step 1 -->
+          <div class="p-5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-cyan-500/50 transition">
+            <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-mono font-bold text-sm mb-3">01</div>
+            <h4 class="font-bold text-white text-base mb-1">Tokenization</h4>
+            <p class="text-xs text-slate-400 leading-relaxed">Text is chopped into sub-word chunks and converted into numeric IDs (vocabulary lookup).</p>
+          </div>
+          <!-- Step 2 -->
+          <div class="p-5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-purple-500/50 transition">
+            <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-mono font-bold text-sm mb-3">02</div>
+            <h4 class="font-bold text-white text-base mb-1">Embedding Space</h4>
+            <p class="text-xs text-slate-400 leading-relaxed">Each number turns into a coordinate vector in thousands of mathematical dimensions that capture meaning.</p>
+          </div>
+          <!-- Step 3 -->
+          <div class="p-5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-sky-500/50 transition">
+            <div class="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-mono font-bold text-sm mb-3">03</div>
+            <h4 class="font-bold text-white text-base mb-1">Transformer Layers</h4>
+            <p class="text-xs text-slate-400 leading-relaxed">Self-attention allows words to look at every other word in context to understand grammar and intent.</p>
+          </div>
+          <!-- Step 4 -->
+          <div class="p-5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/50 transition">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-mono font-bold text-sm mb-3">04</div>
+            <h4 class="font-bold text-white text-base mb-1">Probabilities & Sampling</h4>
+            <p class="text-xs text-slate-400 leading-relaxed">The model outputs odds for every word in its dictionary, picks one, appends it, and loops again!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Tokenization (Interactive) -->
+  <section id="tokenization" class="py-20 border-t border-slate-800/80 bg-slate-950/40">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 text-cyan-400 font-mono text-sm tracking-wider uppercase mb-2">
+        <span class="w-6 h-px bg-cyan-500"></span> Chapter 02
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mb-4">Tokenization: Computers Cannot Read Letters</h2>
+      <p class="text-slate-300 text-lg leading-relaxed max-w-3xl mb-8">
+        Computers only understand numbers. If you feed the word <code class="text-cyan-400 bg-slate-800 px-1.5 py-0.5 rounded">"artificial"</code> into a neural network, it can do nothing with the ASCII letters. The model must first translate your text into <strong class="text-white">Tokens</strong> via algorithms like Byte-Pair Encoding (BPE).
+      </p>
+
+      <!-- Interactive Tokenizer Playground -->
+      <div class="card-glass rounded-2xl border border-slate-700/80 p-6 md:p-8 glow-cyan mb-10">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-slate-800">
+          <div>
+            <h3 class="text-xl font-bold text-white flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-cyan-400"></span> Live Interactive Tokenizer
+            </h3>
+            <p class="text-xs text-slate-400 mt-1">Type anything below to see how subword algorithms segment language into numeric vectors.</p>
+          </div>
+
+          <!-- Preset Buttons -->
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-slate-400">Try presets:</span>
+            <button onclick="setTokenizerText('Large Language Models are revolutionary tools for thought.')" class="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">AI Concept</button>
+            <button onclick="setTokenizerText('def calculate_attention(query, key, value): return softmax(Q @ K.T)')" class="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">Python Code</button>
+            <button onclick="setTokenizerText('Antidisestablishmentarianism is an extraordinarily long word!')" class="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">Rare Word</button>
+          </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="mb-6">
+          <label class="block text-xs uppercase tracking-wider font-mono text-slate-400 mb-2">Input Sentence</label>
+          <textarea id="tokenizer-input" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-base focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition" placeholder="Type any sentence or paste code here...">Large Language Models do not store words; they predict tokens mathematically!</textarea>
+        </div>
+
+        <!-- Real-Time Token Output Visualization -->
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs uppercase tracking-wider font-mono text-slate-400">Parsed Tokens (Subword Segments)</span>
+            <span id="token-stats" class="text-xs font-mono text-cyan-400">14 tokens • 71 chars • ~5.07 chars/token</span>
+          </div>
+          <div id="token-chips-container" class="min-h-[90px] p-4 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-wrap gap-2 items-center">
+            <!-- Dynamically populated chips -->
+          </div>
+        </div>
+
+        <!-- Token ID Table Toggle/View -->
+        <div>
+          <span class="text-xs uppercase tracking-wider font-mono text-slate-400 block mb-2">Numeric Vector Representation (Model View)</span>
+          <div id="token-ids-container" class="p-3 bg-slate-950 rounded-xl border border-slate-800/80 font-mono text-xs text-slate-300 overflow-x-auto whitespace-nowrap">
+            <!-- Dynamically populated IDs -->
+          </div>
+        </div>
+
+        <div class="mt-6 p-4 rounded-xl bg-cyan-950/30 border border-cyan-800/40 text-xs text-cyan-200/90 flex items-start gap-3">
+          <svg class="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <div>
+            <strong class="font-semibold text-white">Why not just whole words or single letters?</strong>
+            <p class="mt-0.5 text-slate-300">If we tokenize character-by-character, sentences become 10x longer, requiring massive computing power. If we tokenize whole words, our vocabulary list would need millions of words and would crash when encountering typos or new slang. <strong class="text-cyan-300">Subwords (BPE)</strong> give the perfect balance—rare words are split into known syllables (e.g. "Anti-dis-establish-ment"), while common words stay compact.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Embeddings & Vector Space -->
+  <section id="embeddings" class="py-20 border-t border-slate-800/80">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 text-purple-400 font-mono text-sm tracking-wider uppercase mb-2">
+        <span class="w-6 h-px bg-purple-500"></span> Chapter 03
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mb-4">Vector Embeddings: Mapping Meaning into Space</h2>
+      <p class="text-slate-300 text-lg leading-relaxed max-w-3xl mb-8">
+        Having a token ID like <code class="text-purple-400 bg-slate-800 px-1.5 py-0.5 rounded">4920</code> is useless because the number itself has no meaning (is 4920 close to 4921? No). To give words meaning, every token is transformed into an <strong class="text-white">Embedding Vector</strong>—a list of thousands of floating-point numbers representing coordinates in a multi-dimensional semantic universe.
+      </p>
+
+      <div class="grid lg:grid-cols-12 gap-8 items-start mb-12">
+        <!-- Visual Interactive Canvas -->
+        <div class="lg:col-span-7 card-glass p-6 rounded-2xl border border-slate-700/80">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span> Semantic 2D Coordinate Map
+              </h3>
+              <p class="text-xs text-slate-400">Words with similar contexts naturally clump together in embedding space.</p>
+            </div>
+            <div class="flex gap-2">
+              <button id="btn-vector-math" class="text-xs px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium transition flex items-center gap-1.5 shadow">
+                <span>Vector Math Demo</span>
+              </button>
+              <button id="btn-reset-canvas" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+                Reset
+              </button>
+            </div>
+          </div>
+
+          <div class="relative bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+            <canvas id="embedding-canvas" width="600" height="380" class="w-full h-[360px] cursor-crosshair"></canvas>
+            <div id="vector-math-badge" class="absolute bottom-3 left-3 bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs px-3 py-1.5 rounded-lg hidden font-mono shadow-lg">
+              Vector Relation: King - Man + Woman ≈ Queen
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-2 flex justify-between">
+            <span>Drag nodes or click to compute semantic distance</span>
+            <span>Real LLMs use 4,096 to 12,288 dimensions!</span>
+          </div>
+        </div>
+
+        <!-- Explanation & Math Card -->
+        <div class="lg:col-span-5 space-y-4">
+          <div class="card-glass p-6 rounded-2xl border border-slate-800">
+            <h4 class="font-bold text-white text-base mb-2 flex items-center gap-2">
+              <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+              What Do The Dimensions Mean?
+            </h4>
+            <p class="text-slate-300 text-sm leading-relaxed mb-3">
+              Imagine every coordinate represents an abstract linguistic attribute:
+            </p>
+            <div class="space-y-2 font-mono text-xs">
+              <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+                <span class="text-slate-400">Dimension 1: [Royalty]</span>
+                <span class="text-purple-300">King (+0.95), Apple (-0.88)</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+                <span class="text-slate-400">Dimension 2: [Gender/Femininity]</span>
+                <span class="text-purple-300">Queen (+0.92), King (-0.90)</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+                <span class="text-slate-400">Dimension 3: [Edible Fruit]</span>
+                <span class="text-purple-300">Apple (+0.99), Banana (+0.98)</span>
+              </div>
+            </div>
+            <p class="text-slate-400 text-xs mt-3">
+              No human labels these dimensions! The model self-discovers these relationships through gradient descent during pre-training.
+            </p>
+          </div>
+
+          <div class="card-glass p-5 rounded-2xl border border-slate-800">
+            <h4 class="font-bold text-white text-sm mb-1">Cosine Similarity (Measuring Meaning)</h4>
+            <p class="text-slate-400 text-xs leading-relaxed">
+              To check if two concepts are related, the model measures the angle $\theta$ between their vectors:
+            </p>
+            <div class="my-2 p-2.5 rounded-lg bg-slate-900 text-center font-mono text-xs text-purple-300">
+              $$\cos(\theta) = \frac{\mathbf{u} \cdot \mathbf{v}}{\|\mathbf{u}\| \|\mathbf{v}\|}$$
+            </div>
+            <p class="text-slate-400 text-xs">
+              $\cos = 1.0$ means identical meaning. $\cos = 0$ means unrelated. $\cos = -1$ means opposite concepts.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Self-Attention & Transformers -->
+  <section id="attention" class="py-20 border-t border-slate-800/80 bg-slate-950/40">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 text-sky-400 font-mono text-sm tracking-wider uppercase mb-2">
+        <span class="w-6 h-px bg-sky-500"></span> Chapter 04
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mb-4">The Secret Weapon: Self-Attention Mechanism</h2>
+      <p class="text-slate-300 text-lg leading-relaxed max-w-3xl mb-8">
+        Static embeddings have a catastrophic flaw: the word <code class="text-sky-300 bg-slate-800 px-1.5 py-0.5 rounded">"bank"</code> in <em>"river bank"</em> and <em>"bank account"</em> would share the exact same vector! In 2017, Google researchers published <strong>"Attention Is All You Need"</strong>, introducing <strong class="text-white">Self-Attention</strong>: a mechanism that allows words to look at every other word in a sentence and update their meaning dynamically based on context.
+      </p>
+
+      <!-- Interactive Attention Heatmap / Connector -->
+      <div class="card-glass rounded-2xl border border-slate-700/80 p-6 md:p-8 glow-cyan mb-12">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-slate-800">
+          <div>
+            <h3 class="text-xl font-bold text-white flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-sky-400"></span> Interactive Self-Attention Matrix
+            </h3>
+            <p class="text-xs text-slate-400 mt-1">Click on any token below to see which other tokens it pays attention to!</p>
+          </div>
+          <!-- Sentence switcher -->
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-slate-400">Sample Sentence:</span>
+            <button id="btn-sent-1" class="text-xs px-3 py-1.5 rounded-lg bg-sky-600 text-white font-medium transition">The Pronoun Trap ("it")</button>
+            <button id="btn-sent-2" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">Polysemy ("bank")</button>
+          </div>
+        </div>
+
+        <!-- Token selector bar -->
+        <div class="mb-8">
+          <div class="text-xs font-mono text-slate-400 uppercase tracking-wider mb-3">Sentence (Click a word to focus attention):</div>
+          <div id="attention-tokens-bar" class="flex flex-wrap gap-2.5 p-4 rounded-xl bg-slate-900 border border-slate-800">
+            <!-- Tokens rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Attention Visualizer Display -->
+        <div class="grid lg:grid-cols-12 gap-8 items-center">
+          <!-- Attention Weight Flow Diagram -->
+          <div class="lg:col-span-7 bg-slate-950 p-5 rounded-xl border border-slate-800 relative">
+            <div class="text-xs font-mono text-slate-400 uppercase mb-3 flex justify-between">
+              <span>Attention Connections from: <span id="focused-token-label" class="text-sky-400 font-bold">"it"</span></span>
+              <span class="text-[11px] text-slate-500">Thickness = Attention Weight ($A_{i,j}$)</span>
+            </div>
+            <div id="attention-links-container" class="space-y-3">
+              <!-- Dynamically populated connection bars -->
+            </div>
+          </div>
+
+          <!-- Explanation box -->
+          <div class="lg:col-span-5 space-y-4">
+            <div class="p-5 rounded-xl bg-slate-900/80 border border-slate-800">
+              <div class="text-xs uppercase font-mono text-sky-400 mb-1">Key Insight</div>
+              <h4 id="attention-insight-title" class="text-base font-bold text-white mb-2">Resolving Ambiguity with Context</h4>
+              <p id="attention-insight-body" class="text-xs text-slate-300 leading-relaxed">
+                When the model reads the token <strong class="text-sky-300">"it"</strong>, self-attention directs 78% of its attention weight back to <strong class="text-sky-300">"animal"</strong> and only 4% to "street", because the adjective <strong class="text-sky-300">"tired"</strong> semantically associates with biological creatures, not paved roads!
+              </p>
+            </div>
+
+            <!-- Q, K, V Breakdown -->
+            <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs">
+              <div class="text-slate-400 uppercase text-[10px] tracking-wider mb-2">The Triad: Queries, Keys & Values</div>
+              <p class="text-slate-300 text-[11px] leading-relaxed mb-2">
+                Think of YouTube or a database search:
+              </p>
+              <ul class="space-y-1 text-slate-400 text-[11px]">
+                <li><strong class="text-cyan-400">Query (Q):</strong> What am I looking for? (e.g. "Who is tired?")</li>
+                <li><strong class="text-purple-400">Key (K):</strong> What label do I have? (e.g. "I am an animal")</li>
+                <li><strong class="text-emerald-400">Value (V):</strong> What content do I hold? (The actual feature vector)</li>
+              </ul>
+              <div class="mt-3 p-2 bg-slate-900 rounded border border-slate-800 text-center text-sky-300 font-mono">
+                $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Probabilities, Temperature & Sampling -->
+  <section id="probabilities" class="py-20 border-t border-slate-800/80">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 text-emerald-400 font-mono text-sm tracking-wider uppercase mb-2">
+        <span class="w-6 h-px bg-emerald-500"></span> Chapter 05
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mb-4">Next-Token Prediction & The Art of Sampling</h2>
+      <p class="text-slate-300 text-lg leading-relaxed max-w-3xl mb-8">
+        Once the Transformer processes the entire prompt through 32 to 128 layers of attention, it produces raw numbers called <strong class="text-white">Logits</strong> for all 50,000+ words in its vocabulary. Converting these logits into probabilities via <strong class="text-emerald-400">Softmax</strong> is how the model chooses what to print next.
+      </p>
+
+      <!-- Live Interactive Generator & Temperature Sandbox -->
+      <div class="card-glass rounded-2xl border border-slate-700/80 p-6 md:p-8 glow-cyan mb-12">
+        <div class="grid lg:grid-cols-12 gap-8">
+          <!-- Left Controls & Simulation -->
+          <div class="lg:col-span-6 space-y-6">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label class="text-xs uppercase font-mono tracking-wider text-slate-400">Current Prompt Sequence</label>
+                <button id="btn-reset-generator" class="text-xs text-slate-400 hover:text-white transition">Reset Sequence</button>
+              </div>
+              <div id="live-generation-prompt" class="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-sm text-slate-200 min-h-[70px] leading-relaxed">
+                The astronaut looked through the spaceship window and saw the <span class="text-emerald-400 animate-pulse font-bold">[NEXT_TOKEN?]</span>
+              </div>
+            </div>
+
+            <!-- Temperature Slider -->
+            <div class="p-5 rounded-xl bg-slate-900 border border-slate-800">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-bold text-white flex items-center gap-2">
+                  <span>Temperature:</span>
+                  <span id="temp-val-display" class="font-mono text-emerald-400">0.70</span>
+                </span>
+                <span id="temp-badge" class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">Balanced & Fluent</span>
+              </div>
+              <input id="temp-slider" type="range" min="0.05" max="1.50" step="0.05" value="0.70" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400">
+              <div class="flex justify-between text-[11px] text-slate-400 mt-2 font-mono">
+                <span>0.1 (Strict/Code)</span>
+                <span>0.7 (Default)</span>
+                <span>1.5 (Wild/Creative)</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-3 leading-relaxed">
+                <strong class="text-slate-200">What does temperature do?</strong> It divides the logits: $e^{z_i / T}$. At low $T$, high probabilities get exaggerated (deterministic). At high $T$, all words become almost equally probable (unhinged chaos).
+              </p>
+            </div>
+
+            <!-- Action Button: Generate Next Token -->
+            <div class="flex gap-3">
+              <button id="btn-sample-token" class="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span>Sample & Append Next Token</span>
+              </button>
+              <button id="btn-auto-run" class="px-4 py-3 rounded-xl card-glass border border-slate-700 text-slate-300 hover:text-white transition font-mono text-xs">
+                Auto-Complete (5)
+              </button>
+            </div>
+          </div>
+
+          <!-- Right Probability Distribution -->
+          <div class="lg:col-span-6 bg-slate-950 p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="font-bold text-white text-sm flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Candidate Token Probabilities (Softmax)
+                </h4>
+                <span class="text-xs font-mono text-slate-500">Top 5 Candidates</span>
+              </div>
+
+              <!-- Candidate bars -->
+              <div id="candidate-prob-bars" class="space-y-3.5 mb-6">
+                <!-- Dynamically populated candidate distributions -->
+              </div>
+            </div>
+
+            <div class="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-400 leading-relaxed">
+              <strong class="text-white">Autoregressive Loop:</strong> When the model picks a token (e.g. <em>"Earth"</em>), that token is appended to the prompt. Then the model runs the <em>entire process over again</em> to pick token #2, then token #3, until it emits the special stop token <code class="text-emerald-400 bg-slate-800 px-1 py-0.5 rounded">&lt;|endoftext|&gt;</code>.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: How LLMs are Trained (The 3 Stages) -->
+  <section id="training" class="py-20 border-t border-slate-800/80 bg-slate-950/40">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 text-amber-400 font-mono text-sm tracking-wider uppercase mb-2">
+        <span class="w-6 h-px bg-amber-500"></span> Chapter 06
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mb-4">The Making of a Model: 3 Stages of Training</h2>
+      <p class="text-slate-300 text-lg leading-relaxed max-w-3xl mb-12">
+        A raw neural network knows nothing. How do we turn billions of randomly initialized weights into a helpful assistant like ChatGPT or Gemini? Modern AI follows an industry-standard 3-step pipeline.
+      </p>
+
+      <!-- 3 Stage Interactive Timeline / Tabs -->
+      <div class="space-y-6">
+        <!-- Stage 1 -->
+        <div class="card-glass p-7 rounded-2xl border border-slate-800 hover:border-amber-500/40 transition">
+          <div class="flex flex-col md:flex-row md:items-start justify-between gap-6">
+            <div class="md:max-w-md">
+              <div class="flex items-center gap-3 mb-2">
+                <span class="px-2.5 py-1 rounded bg-amber-500/20 text-amber-400 font-mono text-xs font-bold uppercase tracking-wider">Stage 01</span>
+                <span class="text-xs text-slate-400 font-mono">99% of Computing Cost</span>
+              </div>
+              <h3 class="text-2xl font-bold text-white mb-2">Pre-Training (Raw Text World Model)</h3>
+              <p class="text-slate-300 text-sm leading-relaxed mb-4">
+                The model reads thousands of gigabytes of text: Wikipedia, books, GitHub code, scientific papers, and high-quality web pages.
+              </p>
+              <div class="text-xs font-mono text-slate-400 space-y-1">
+                <div>• Hardware: 10,000+ GPUs cluster (H100 / TPU)</div>
+                <div>• Duration: 3 - 6 months continuously</div>
+                <div>• Cost: $50M - $200M+ per training run</div>
+              </div>
+            </div>
+
+            <!-- Pre-training behavior box -->
+            <div class="flex-1 bg-slate-900 p-5 rounded-xl border border-slate-800">
+              <div class="text-xs uppercase font-mono text-amber-400 mb-2">How a Base Model Behaves:</div>
+              <div class="text-xs font-mono text-slate-400 mb-1">User prompt:</div>
+              <div class="p-2.5 rounded bg-slate-950 text-slate-200 text-xs font-mono mb-3 border border-slate-800">
+                "Write a poem about the ocean."
+              </div>
+              <div class="text-xs font-mono text-amber-300 mb-1">Base Model Output (Merely completes pattern):</div>
+              <div class="p-2.5 rounded bg-slate-950 text-amber-200/90 text-xs font-mono border border-amber-900/40">
+                "Write a poem about the sky. Write a poem about the trees. Write a poem about the mountains..."
+              </div>
+              <p class="text-[11px] text-slate-400 mt-2">
+                A base model doesn't know it is supposed to be helpful! It just thinks this is a list of homework exercises.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stage 2 -->
+        <div class="card-glass p-7 rounded-2xl border border-slate-800 hover:border-cyan-500/40 transition">
+          <div class="flex flex-col md:flex-row md:items-start justify-between gap-6">
+            <div class="md:max-w-md">
+              <div class="flex items-center gap-3 mb-2">
+                <span class="px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider">Stage 02</span>
+                <span class="text-xs text-slate-400 font-mono">Curated Quality</span>
+              </div>
+              <h3 class="text-2xl font-bold text-white mb-2">Supervised Fine-Tuning (SFT / Instruction)</h3>
+              <p class="text-slate-300 text-sm leading-relaxed mb-4">
+                Expert human annotators write hundreds of thousands of ideal dialogues: high-quality questions paired with thorough, polite, accurate responses.
+              </p>
+              <div class="text-xs font-mono text-slate-400 space-y-1">
+                <div>• Goal: Transform text completer into an assistant</div>
+                <div>• Formats: Dialogues, System prompts, Roleplay</div>
+                <div>• Scale: 100k - 1M highly curated conversations</div>
+              </div>
+            </div>
+
+            <!-- SFT behavior box -->
+            <div class="flex-1 bg-slate-900 p-5 rounded-xl border border-slate-800">
+              <div class="text-xs uppercase font-mono text-cyan-400 mb-2">How an SFT Model Behaves:</div>
+              <div class="text-xs font-mono text-slate-400 mb-1">User prompt:</div>
+              <div class="p-2.5 rounded bg-slate-950 text-slate-200 text-xs font-mono mb-3 border border-slate-800">
+                "Write a poem about the ocean."
+              </div>
+              <div class="text-xs font-mono text-cyan-300 mb-1">SFT Model Output (Follows Instructions):</div>
+              <div class="p-2.5 rounded bg-slate-950 text-cyan-200/90 text-xs font-mono border border-cyan-900/40">
+                "Rolling waves of emerald green,<br>The deepest depths no eyes have seen.<br>Tides that whisper to the shore..."
+              </div>
+              <p class="text-[11px] text-slate-400 mt-2">
+                The model now understands the conversational contract: "When asked a question, provide the answer."
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stage 3 -->
+        <div class="card-glass p-7 rounded-2xl border border-slate-800 hover:border-purple-500/40 transition">
+          <div class="flex flex-col md:flex-row md:items-start justify-between gap-6">
+            <div class="md:max-w-md">
+              <div class="flex items-center gap-3 mb-2">
+                <span class="px-2.5 py-1 rounded bg-purple-500/20 text-purple-400 font-mono text-xs font-bold uppercase tracking-wider">Stage 03</span>
+                <span class="text-xs text-slate-400 font-mono">Safety & Polish</span>
+              </div>
+              <h3 class="text-2xl font-bold text-white mb-2">Alignment: RLHF & DPO</h3>
+              <p class="text-slate-300 text-sm leading-relaxed mb-4">
+                Reinforcement Learning from Human Feedback (RLHF) and Direct Preference Optimization (DPO). The model generates multiple candidate answers; humans or judge models rank: <em>"Response A is better and safer than Response B"</em>.
+              </p>
+              <div class="text-xs font-mono text-slate-400 space-y-1">
+                <div>• Reward Model learns what humans prefer</div>
+                <div>• Suppresses dangerous advice, bias, and toxic slurs</div>
+                <div>• Teaches concise formatting and admitted uncertainty</div>
+              </div>
+            </div>
+
+            <!-- RLHF box -->
+            <div class="flex-1 bg-slate-900 p-5 rounded-xl border border-slate-800">
+              <div class="text-xs uppercase font-mono text-purple-400 mb-2">Human Preference Ranking:</div>
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <div class="p-2.5 rounded bg-slate-950 border border-emerald-500/50 text-[11px] font-mono text-emerald-300">
+                  <div class="font-bold text-emerald-400 mb-1">Option A (Accepted ✓)</div>
+                  Accurate, cited, structured, helpful formatting.
+                </div>
+                <div class="p-2.5 rounded bg-slate-950 border border-red-500/50 text-[11px] font-mono text-red-300">
+                  <div class="font-bold text-red-400 mb-1">Option B (Rejected ✕)</div>
+                  Hallucinates non-existent facts, verbose, condescending.
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-400">
+                A mathematical penalty prevents the model from straying too far from its original knowledge while maximizing human rating.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 7: Key Concepts & Limitations (Why LLMs Hallucinate) -->
+  <section class="py-20 border-t border-slate-800/80">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 text-pink-400 font-mono text-sm tracking-wider uppercase mb-2">
+        <span class="w-6 h-px bg-pink-500"></span> Chapter 07
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mb-4">Crucial Concepts: Context, Memory & Hallucinations</h2>
+      <p class="text-slate-300 text-lg leading-relaxed max-w-3xl mb-12">
+        To use and build with LLMs like an elite developer, you must know their architectural limits and runtime dynamics.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-6">
+        <!-- Card 1 -->
+        <div class="card-glass p-6 rounded-2xl border border-slate-800">
+          <div class="w-10 h-10 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold mb-4">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Context Window (Working Memory)</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            The context window (e.g. 128k - 1M tokens) is like the model's RAM. It holds your prompt and previous messages. Once text falls outside this window, the model has literally zero recollection of it.
+          </p>
+          <div class="text-xs font-mono text-pink-300/80 bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+            Note: Weights are permanent ROM; Prompt is temporary RAM.
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="card-glass p-6 rounded-2xl border border-slate-800">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold mb-4">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Why Do Models Hallucinate?</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Because the model optimizes for <em>plausibility</em>, not factuality. If a fake scientific paper title sounds phonetically and grammatically like a real paper, the model will invent authors and citations without flinching.
+          </p>
+          <div class="text-xs font-mono text-amber-300/80 bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+            Fix: RAG (Retrieval Augmented Generation) & Tool Calling.
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="card-glass p-6 rounded-2xl border border-slate-800">
+          <div class="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold mb-4">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Chain-of-Thought (Scratchpad)</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            An LLM only computes a fixed number of FLOPs per token. If you ask a complex riddle and demand an immediate answer in 1 word, it fails. Asking it to <em>"think step by step"</em> gives it tokens to compute intermediate thoughts!
+          </p>
+          <div class="text-xs font-mono text-cyan-300/80 bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+            More output tokens = More FLOPs of reasoning.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 8: Interactive Knowledge Check Quiz -->
+  <section id="quiz" class="py-20 border-t border-slate-800/80 bg-slate-950/40">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-12">
+        <div class="inline-flex items-center gap-2 text-cyan-400 font-mono text-xs uppercase tracking-wider px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-800 mb-3">
+          Final Assessment
+        </div>
+        <h2 class="text-3xl sm:text-4xl font-bold text-white mb-3">Test Your LLM Architecture Mastery</h2>
+        <p class="text-slate-400 text-sm max-w-xl mx-auto">
+          See if you can ace these 4 fundamental conceptual questions. Immediate feedback and explanations provided!
+        </p>
+      </div>
+
+      <!-- Quiz Container -->
+      <div id="quiz-card" class="card-glass rounded-2xl border border-slate-700/80 p-6 sm:p-8 glow-cyan">
+        <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
+          <span id="quiz-counter" class="text-xs font-mono text-cyan-400 uppercase tracking-wider">Question 1 of 4</span>
+          <span id="quiz-score" class="text-xs font-mono text-slate-400">Score: 0 / 0</span>
+        </div>
+
+        <h3 id="quiz-question" class="text-lg sm:text-xl font-bold text-white mb-6">
+          <!-- Question text -->
+        </h3>
+
+        <!-- Options Container -->
+        <div id="quiz-options" class="space-y-3 mb-6">
+          <!-- Option buttons populated by JS -->
+        </div>
+
+        <!-- Feedback Box -->
+        <div id="quiz-feedback" class="p-4 rounded-xl hidden mb-6 text-sm">
+          <!-- Feedback message -->
+        </div>
+
+        <!-- Next Button -->
+        <div class="flex justify-end">
+          <button id="btn-quiz-next" class="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition hidden">
+            Next Question →
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 border-t border-slate-800/80 text-center text-slate-500 text-xs font-mono">
+    <div class="max-w-6xl mx-auto px-4 space-y-4">
+      <div class="flex flex-wrap justify-center gap-6 text-slate-400">
+        <a href="#tokenization" class="hover:text-cyan-400 transition">Tokenization</a>
+        <a href="#embeddings" class="hover:text-cyan-400 transition">Embeddings</a>
+        <a href="#attention" class="hover:text-cyan-400 transition">Attention Mechanism</a>
+        <a href="#probabilities" class="hover:text-cyan-400 transition">Softmax & Sampling</a>
+        <a href="#training" class="hover:text-cyan-400 transition">Pretraining & RLHF</a>
+      </div>
+      <p>Crafted for curious engineers, researchers, and creators. All simulations executed in browser memory.</p>
+    </div>
+  </footer>
+
+  <!-- JAVASCRIPT LOGIC & INTERACTIVE ENGINES -->
+  <script>
+    /* ========================================================
+       1. READING PROGRESS BAR
+       ======================================================== */
+    window.addEventListener('scroll', () => {
+      const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = (window.scrollY / totalHeight) * 100;
+      document.getElementById('read-progress').style.width = progress + '%';
+    });
+
+    /* ========================================================
+       2. HERO NEURAL NETWORK CANVAS ANIMATION
+       ======================================================== */
+    const heroCanvas = document.getElementById('hero-neural-canvas');
+    const heroCtx = heroCanvas.getContext('2d');
+    let heroNodes = [];
+
+    function resizeHeroCanvas() {
+      heroCanvas.width = heroCanvas.offsetWidth;
+      heroCanvas.height = heroCanvas.offsetHeight;
+      initHeroNodes();
+    }
+
+    function initHeroNodes() {
+      heroNodes = [];
+      const count = Math.min(Math.floor(heroCanvas.width / 22), 65);
+      for (let i = 0; i < count; i++) {
+        heroNodes.push({
+          x: Math.random() * heroCanvas.width,
+          y: Math.random() * heroCanvas.height,
+          vx: (Math.random() - 0.5) * 0.7,
+          vy: (Math.random() - 0.5) * 0.7,
+          radius: Math.random() * 2 + 1.5,
+          color: Math.random() > 0.5 ? '#38bdf8' : '#c084fc'
+        });
+      }
+    }
+
+    function drawHeroNetwork() {
+      heroCtx.clearRect(0, 0, heroCanvas.width, heroCanvas.height);
+
+      for (let i = 0; i < heroNodes.length; i++) {
+        const n1 = heroNodes[i];
+        n1.x += n1.vx;
+        n1.y += n1.vy;
+
+        if (n1.x < 0 || n1.x > heroCanvas.width) n1.vx *= -1;
+        if (n1.y < 0 || n1.y > heroCanvas.height) n1.vy *= -1;
+
+        // Draw connections
+        for (let j = i + 1; j < heroNodes.length; j++) {
+          const n2 = heroNodes[j];
+          const dist = Math.hypot(n1.x - n2.x, n1.y - n2.y);
+          if (dist < 130) {
+            heroCtx.strokeStyle = `rgba(56, 189, 248, ${0.2 * (1 - dist / 130)})`;
+            heroCtx.lineWidth = 1;
+            heroCtx.beginPath();
+            heroCtx.moveTo(n1.x, n1.y);
+            heroCtx.lineTo(n2.x, n2.y);
+            heroCtx.stroke();
+          }
+        }
+
+        // Draw Node
+        heroCtx.fillStyle = n1.color;
+        heroCtx.beginPath();
+        heroCtx.arc(n1.x, n1.y, n1.radius, 0, Math.PI * 2);
+        heroCtx.fill();
+      }
+
+      requestAnimationFrame(drawHeroNetwork);
+    }
+
+    window.addEventListener('resize', resizeHeroCanvas);
+    resizeHeroCanvas();
+    drawHeroNetwork();
+
+    /* ========================================================
+       3. INTERACTIVE TOKENIZER LOGIC
+       ======================================================== */
+    const tokenizerInput = document.getElementById('tokenizer-input');
+    const tokenChipsContainer = document.getElementById('token-chips-container');
+    const tokenIdsContainer = document.getElementById('token-ids-container');
+    const tokenStats = document.getElementById('token-stats');
+
+    // Vibrant palette for tokens
+    const chipColors = [
+      'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+      'bg-purple-500/20 text-purple-300 border-purple-500/40',
+      'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+      'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      'bg-rose-500/20 text-rose-300 border-rose-500/40',
+      'bg-blue-500/20 text-blue-300 border-blue-500/40',
+      'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+    ];
+
+    // High quality BPE-like heuristic subword tokenizer
+    function simulateBPETokenize(text) {
+      if (!text) return [];
+      // Regex that isolates words, punctuation, whitespace chunks, subwords
+      const tokens = [];
+      const regex = /([A-Za-z]+|[0-9]+|[\s]+|[^\s\w]+)/g;
+      const matches = text.match(regex) || [];
+
+      matches.forEach(chunk => {
+        // Break long words into subwords if > 7 chars
+        if (/^[A-Za-z]{8,}$/.test(chunk)) {
+          let left = chunk;
+          while (left.length > 5) {
+            const sub = left.slice(0, 4);
+            tokens.push(sub);
+            left = left.slice(4);
+          }
+          if (left.length > 0) tokens.push(left);
+        } else {
+          tokens.push(chunk);
+        }
+      });
+      return tokens;
+    }
+
+    function pseudoHashTokenId(token) {
+      let hash = 0;
+      for (let i = 0; i < token.length; i++) {
+        hash = (hash << 5) - hash + token.charCodeAt(i);
+        hash |= 0;
+      }
+      return Math.abs(hash % 49152) + 1024;
+    }
+
+    function renderTokens() {
+      const rawText = tokenizerInput.value;
+      const tokens = simulateBPETokenize(rawText);
+
+      tokenChipsContainer.innerHTML = '';
+      const ids = [];
+
+      tokens.forEach((t, idx) => {
+        const id = pseudoHashTokenId(t);
+        ids.push(id);
+        const color = chipColors[idx % chipColors.length];
+
+        const chip = document.createElement('div');
+        chip.className = `px-2.5 py-1 rounded-md border font-mono text-xs flex items-center gap-1.5 shadow-sm transition hover:scale-105 cursor-default ${color}`;
+        
+        // Show space indicator if starts with space
+        const displayToken = t.replace(/ /g, '␣');
+        chip.innerHTML = `<span>${displayToken}</span><span class="text-[10px] opacity-60">#${id}</span>`;
+        tokenChipsContainer.appendChild(chip);
+      });
+
+      tokenIdsContainer.textContent = `[ ${ids.join(', ')} ]`;
+      const charCount = rawText.length;
+      const ratio = tokens.length ? (charCount / tokens.length).toFixed(2) : 0;
+      tokenStats.textContent = `${tokens.length} tokens • ${charCount} chars • ~${ratio} chars/token`;
+    }
+
+    tokenizerInput.addEventListener('input', renderTokens);
+    window.setTokenizerText = function(preset) {
+      tokenizerInput.value = preset;
+      renderTokens();
+    };
+    renderTokens();
+
+    /* ========================================================
+       4. EMBEDDINGS 2D CANVAS & VECTOR ARITHMETIC
+       ======================================================== */
+    const embCanvas = document.getElementById('embedding-canvas');
+    const embCtx = embCanvas.getContext('2d');
+    const btnVectorMath = document.getElementById('btn-vector-math');
+    const btnResetCanvas = document.getElementById('btn-reset-canvas');
+    const vectorMathBadge = document.getElementById('vector-math-badge');
+
+    // Semantic vector clusters
+    const defaultWords = [
+      // Royalty cluster
+      { text: "King", x: 140, y: 110, group: "royalty", color: "#c084fc" },
+      { text: "Queen", x: 260, y: 110, group: "royalty", color: "#c084fc" },
+      { text: "Man", x: 140, y: 220, group: "gender", color: "#38bdf8" },
+      { text: "Woman", x: 260, y: 220, group: "gender", color: "#38bdf8" },
+
+      // Food / Fruit cluster
+      { text: "Apple", x: 480, y: 90, group: "fruit", color: "#4ade80" },
+      { text: "Banana", x: 530, y: 140, group: "fruit", color: "#4ade80" },
+      { text: "Orange", x: 460, y: 160, group: "fruit", color: "#4ade80" },
+
+      // Tech cluster
+      { text: "Python", x: 420, y: 270, group: "tech", color: "#f59e0b" },
+      { text: "Algorithm", x: 490, y: 310, group: "tech", color: "#f59e0b" },
+      { text: "Code", x: 410, y: 330, group: "tech", color: "#f59e0b" }
+    ];
+
+    let words = JSON.parse(JSON.stringify(defaultWords));
+    let draggedNode = null;
+    let isShowingMath = false;
+
+    function drawEmbeddings() {
+      embCtx.clearRect(0, 0, embCanvas.width, embCanvas.height);
+
+      // Draw subtle grid lines
+      embCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      embCtx.lineWidth = 1;
+      for (let x = 0; x < embCanvas.width; x += 40) {
+        embCtx.beginPath();
+        embCtx.moveTo(x, 0);
+        embCtx.lineTo(x, embCanvas.height);
+        embCtx.stroke();
+      }
+      for (let y = 0; y < embCanvas.height; y += 40) {
+        embCtx.beginPath();
+        embCtx.moveTo(0, y);
+        embCtx.lineTo(embCanvas.width, y);
+        embCtx.stroke();
+      }
+
+      // If Vector Math is active, draw relation vectors
+      if (isShowingMath) {
+        const king = words.find(w => w.text === "King");
+        const man = words.find(w => w.text === "Man");
+        const woman = words.find(w => w.text === "Woman");
+        const queen = words.find(w => w.text === "Queen");
+
+        // King to Man vector
+        drawArrow(king.x, king.y, man.x, man.y, '#f43f5e', '- Male');
+        // Man to Woman
+        drawArrow(man.x, man.y, woman.x, woman.y, '#38bdf8', '+ Female');
+        // Woman to Queen
+        drawArrow(woman.x, woman.y, queen.x, queen.y, '#c084fc', '+ Royalty');
+      }
+
+      // Draw nodes
+      words.forEach(w => {
+        // Outer halo
+        embCtx.beginPath();
+        embCtx.arc(w.x, w.y, 8, 0, Math.PI * 2);
+        embCtx.fillStyle = w.color + '40';
+        embCtx.fill();
+
+        // Inner solid point
+        embCtx.beginPath();
+        embCtx.arc(w.x, w.y, 4, 0, Math.PI * 2);
+        embCtx.fillStyle = w.color;
+        embCtx.fill();
+
+        // Label
+        embCtx.font = "600 13px 'Plus Jakarta Sans', sans-serif";
+        embCtx.fillStyle = "#ffffff";
+        embCtx.fillText(w.text, w.x + 12, w.y + 4);
+      });
+    }
+
+    function drawArrow(fromx, fromy, tox, toy, color, label) {
+      embCtx.strokeStyle = color;
+      embCtx.lineWidth = 2;
+      embCtx.setLineDash([4, 4]);
+      embCtx.beginPath();
+      embCtx.moveTo(fromx, fromy);
+      embCtx.lineTo(tox, toy);
+      embCtx.stroke();
+      embCtx.setLineDash([]);
+
+      // Label mid
+      const midX = (fromx + tox) / 2;
+      const midY = (fromy + toy) / 2;
+      embCtx.font = "bold 11px 'JetBrains Mono', monospace";
+      embCtx.fillStyle = color;
+      embCtx.fillText(label, midX + 8, midY - 6);
+    }
+
+    // Dragging interaction
+    embCanvas.addEventListener('mousedown', (e) => {
+      const rect = embCanvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (embCanvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (embCanvas.height / rect.height);
+
+      draggedNode = words.find(w => Math.hypot(w.x - x, w.y - y) < 18);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!draggedNode) return;
+      const rect = embCanvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (embCanvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (embCanvas.height / rect.height);
+      draggedNode.x = Math.max(20, Math.min(embCanvas.width - 70, x));
+      draggedNode.y = Math.max(20, Math.min(embCanvas.height - 20, y));
+      drawEmbeddings();
+    });
+
+    window.addEventListener('mouseup', () => { draggedNode = null; });
+
+    btnVectorMath.addEventListener('click', () => {
+      isShowingMath = !isShowingMath;
+      vectorMathBadge.classList.toggle('hidden', !isShowingMath);
+      btnVectorMath.classList.toggle('bg-purple-700', isShowingMath);
+      drawEmbeddings();
+    });
+
+    btnResetCanvas.addEventListener('click', () => {
+      words = JSON.parse(JSON.stringify(defaultWords));
+      isShowingMath = false;
+      vectorMathBadge.classList.add('hidden');
+      drawEmbeddings();
+    });
+
+    drawEmbeddings();
+
+    /* ========================================================
+       5. ATTENTION MECHANISM INTERACTIVE SANDBOX
+       ======================================================== */
+    const sampleSentences = {
+      sent1: {
+        tokens: ["The", "animal", "didn't", "cross", "the", "street", "because", "it", "was", "too", "tired"],
+        focusIndex: 7, // "it"
+        weights: {
+          "it": [
+            { target: "animal", score: 0.78, explanation: "Primary subject referent: animals experience fatigue." },
+            { target: "tired", score: 0.14, explanation: "Predicate condition describing physical state." },
+            { target: "cross", score: 0.04, explanation: "Action context." },
+            { target: "street", score: 0.03, explanation: "Inanimate entity, cannot be tired." },
+            { target: "The", score: 0.01, explanation: "Determiner." }
+          ]
+        },
+        insightTitle: "Resolving Ambiguity with Context",
+        insightBody: "When the model reads 'it', self-attention directs 78% of its attention weight back to 'animal' and only 3% to 'street', because the adjective 'tired' semantically associates with living creatures."
+      },
+      sent2: {
+        tokens: ["The", "fisherman", "walked", "along", "the", "bank", "of", "the", "rushing", "river"],
+        focusIndex: 5, // "bank"
+        weights: {
+          "bank": [
+            { target: "river", score: 0.65, explanation: "Geographic water context dominates." },
+            { target: "fisherman", score: 0.22, explanation: "Person engaging in shoreline activity." },
+            { target: "rushing", score: 0.09, explanation: "Adjective modifying water flow." },
+            { target: "along", score: 0.03, explanation: "Preposition of traversal." },
+            { target: "walked", score: 0.01, explanation: "Movement." }
+          ]
+        },
+        insightTitle: "Polysemy: Disambiguating Words with Multiple Meanings",
+        insightBody: "Is 'bank' a financial vault or a river shore? Self-attention connects 'bank' with 65% weight to 'river' and 22% to 'fisherman', transforming its vector coordinate into geographic terrain!"
+      }
+    };
+
+    let currentAttentionData = sampleSentences.sent1;
+    let selectedTokenIndex = 7;
+
+    const attentionBar = document.getElementById('attention-tokens-bar');
+    const attentionLinks = document.getElementById('attention-links-container');
+    const focusedLabel = document.getElementById('focused-token-label');
+    const attentionInsightTitle = document.getElementById('attention-insight-title');
+    const attentionInsightBody = document.getElementById('attention-insight-body');
+    const btnSent1 = document.getElementById('btn-sent-1');
+    const btnSent2 = document.getElementById('btn-sent-2');
+
+    function renderAttentionUI() {
+      attentionBar.innerHTML = '';
+      currentAttentionData.tokens.forEach((t, i) => {
+        const btn = document.createElement('button');
+        const isSelected = i === selectedTokenIndex;
+        btn.className = `px-3 py-1.5 rounded-lg text-xs font-mono transition ${
+          isSelected 
+            ? 'bg-sky-500 text-slate-950 font-bold glow-cyan scale-105' 
+            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+        }`;
+        btn.textContent = t;
+        btn.addEventListener('click', () => {
+          selectedTokenIndex = i;
+          renderAttentionUI();
+        });
+        attentionBar.appendChild(btn);
+      });
+
+      const focusedWord = currentAttentionData.tokens[selectedTokenIndex];
+      focusedLabel.textContent = `"${focusedWord}"`;
+
+      attentionLinks.innerHTML = '';
+
+      // Check if we have defined weights for this word or generate contextual weights
+      let weights = currentAttentionData.weights[focusedWord];
+      if (!weights) {
+        // Fallback realistic attention decay
+        weights = currentAttentionData.tokens
+          .filter((_, idx) => idx !== selectedTokenIndex)
+          .slice(0, 4)
+          .map((target, idx) => ({
+            target: target,
+            score: idx === 0 ? 0.52 : (0.48 / (idx + 1)),
+            explanation: "Contextual syntactic dependency."
+          }));
+      }
+
+      weights.forEach(w => {
+        const pct = Math.round(w.score * 100);
+        const row = document.createElement('div');
+        row.className = 'p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between gap-4';
+        row.innerHTML = `
+          <div class="w-24 font-mono text-xs text-sky-300 font-bold truncate">→ "${w.target}"</div>
+          <div class="flex-1">
+            <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all duration-500" style="width: ${pct}%"></div>
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1 truncate">${w.explanation || ''}</div>
+          </div>
+          <div class="font-mono text-xs text-sky-400 font-semibold w-12 text-right">${pct}%</div>
+        `;
+        attentionLinks.appendChild(row);
+      });
+
+      attentionInsightTitle.textContent = currentAttentionData.insightTitle;
+      attentionInsightBody.textContent = currentAttentionData.insightBody;
+    }
+
+    btnSent1.addEventListener('click', () => {
+      currentAttentionData = sampleSentences.sent1;
+      selectedTokenIndex = 7;
+      btnSent1.className = 'text-xs px-3 py-1.5 rounded-lg bg-sky-600 text-white font-medium transition';
+      btnSent2.className = 'text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition';
+      renderAttentionUI();
+    });
+
+    btnSent2.addEventListener('click', () => {
+      currentAttentionData = sampleSentences.sent2;
+      selectedTokenIndex = 5;
+      btnSent2.className = 'text-xs px-3 py-1.5 rounded-lg bg-sky-600 text-white font-medium transition';
+      btnSent1.className = 'text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition';
+      renderAttentionUI();
+    });
+
+    renderAttentionUI();
+
+    /* ========================================================
+       6. NEXT-TOKEN PROBABILITIES & TEMPERATURE SAMPLING
+       ======================================================== */
+    const tempSlider = document.getElementById('temp-slider');
+    const tempValDisplay = document.getElementById('temp-val-display');
+    const tempBadge = document.getElementById('temp-badge');
+    const candidateBars = document.getElementById('candidate-prob-bars');
+    const livePrompt = document.getElementById('live-generation-prompt');
+    const btnSampleToken = document.getElementById('btn-sample-token');
+    const btnAutoRun = document.getElementById('btn-auto-run');
+    const btnResetGen = document.getElementById('btn-reset-generator');
+
+    const defaultInitialPrompt = "The astronaut looked through the spaceship window and saw the ";
+
+    // Baseline logits for the next word
+    const candidateTokensBase = [
+      { token: "Earth", logit: 6.2 },
+      { token: "stars", logit: 5.4 },
+      { token: "moon", logit: 4.8 },
+      { token: "infinite", logit: 3.5 },
+      { token: "pizza", logit: 0.5 }
+    ];
+
+    function computeSoftmax(candidates, temperature) {
+      const scaled = candidates.map(c => ({
+        token: c.token,
+        exp: Math.exp(c.logit / temperature)
+      }));
+      const sumExp = scaled.reduce((acc, curr) => acc + curr.exp, 0);
+      return scaled.map(c => ({
+        token: c.token,
+        prob: c.exp / sumExp
+      }));
+    }
+
+    function renderProbabilities() {
+      const T = parseFloat(tempSlider.value);
+      tempValDisplay.textContent = T.toFixed(2);
+
+      if (T <= 0.3) {
+        tempBadge.textContent = "Strict & Deterministic";
+        tempBadge.className = "text-xs px-2.5 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800";
+      } else if (T <= 0.9) {
+        tempBadge.textContent = "Balanced & Fluent";
+        tempBadge.className = "text-xs px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800";
+      } else {
+        tempBadge.textContent = "Creative & Hallucinatory";
+        tempBadge.className = "text-xs px-2.5 py-0.5 rounded-full bg-pink-950 text-pink-300 border border-pink-800";
+      }
+
+      const probs = computeSoftmax(candidateTokensBase, T);
+      candidateBars.innerHTML = '';
+
+      probs.forEach((p, idx) => {
+        const pct = (p.prob * 100).toFixed(1);
+        const item = document.createElement('div');
+        item.className = 'space-y-1.5';
+        item.innerHTML = `
+          <div class="flex justify-between items-center text-xs font-mono">
+            <span class="text-white font-bold">${idx === 0 ? '★ ' : ''}"${p.token}"</span>
+            <span class="text-emerald-400">${pct}%</span>
+          </div>
+          <div class="h-2 rounded-full bg-slate-900 overflow-hidden border border-slate-800">
+            <div class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300" style="width: ${pct}%"></div>
+          </div>
+        `;
+        candidateBars.appendChild(item);
+      });
+    }
+
+    tempSlider.addEventListener('input', renderProbabilities);
+
+    function sampleNextToken() {
+      const T = parseFloat(tempSlider.value);
+      const probs = computeSoftmax(candidateTokensBase, T);
+      
+      // Roulette wheel selection based on probability
+      const r = Math.random();
+      let cumulative = 0;
+      let chosenToken = probs[0].token;
+
+      for (const p of probs) {
+        cumulative += p.prob;
+        if (r <= cumulative) {
+          chosenToken = p.token;
+          break;
+        }
+      }
+
+      // Append to prompt
+      const currentText = livePrompt.textContent.replace('[NEXT_TOKEN?]', '').trim();
+      livePrompt.innerHTML = `${currentText} <strong class="text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800">${chosenToken}</strong> <span class="text-emerald-400 animate-pulse font-bold">[NEXT_TOKEN?]</span>`;
+
+      // Cycle logits slightly for the next step simulation
+      candidateTokensBase.forEach(c => {
+        c.logit = Math.max(0.2, (Math.random() * 6).toFixed(1));
+      });
+      renderProbabilities();
+    }
+
+    btnSampleToken.addEventListener('click', sampleNextToken);
+
+    btnAutoRun.addEventListener('click', () => {
+      let count = 0;
+      const interval = setInterval(() => {
+        if (count >= 5) {
+          clearInterval(interval);
+          return;
+        }
+        sampleNextToken();
+        count++;
+      }, 500);
+    });
+
+    btnResetGen.addEventListener('click', () => {
+      livePrompt.innerHTML = `${defaultInitialPrompt} <span class="text-emerald-400 animate-pulse font-bold">[NEXT_TOKEN?]</span>`;
+      candidateTokensBase[0].logit = 6.2;
+      candidateTokensBase[1].logit = 5.4;
+      candidateTokensBase[2].logit = 4.8;
+      candidateTokensBase[3].logit = 3.5;
+      candidateTokensBase[4].logit = 0.5;
+      renderProbabilities();
+    });
+
+    renderProbabilities();
+
+    /* ========================================================
+       7. INTERACTIVE KNOWLEDGE CHECK QUIZ LOGIC
+       ======================================================== */
+    const quizData = [
+      {
+        question: "Why do LLMs require 'Tokenization' instead of reading raw characters directly?",
+        options: [
+          "Computers physically cannot process the alphabet at all.",
+          "Single characters make context sequences 10x longer and whole words create an unmanageably huge vocabulary list.",
+          "Tokenization encrypts the user's prompt so government agencies cannot read it.",
+          "Transformers can only process English and Latin characters."
+        ],
+        correct: 1,
+        explanation: "Correct! Subword tokenization (BPE) strikes the optimal mathematical balance between sequence length and vocabulary size."
+      },
+      {
+        question: "What is the primary function of the Self-Attention mechanism in the Transformer?",
+        options: [
+          "It connects the AI to the internet in real time to fetch search results.",
+          "It forces the model to stay focused on one topic and reject interruptions.",
+          "It dynamically updates each word's embedding vector based on surrounding context in the sentence.",
+          "It compresses the model's disk size so it fits on mobile devices."
+        ],
+        correct: 2,
+        explanation: "Bingo! Self-attention allows words like 'bank' to change meaning depending on whether 'river' or 'money' is in the context."
+      },
+      {
+        question: "If an LLM has a Temperature of 0.0 or 0.1, how will it behave?",
+        options: [
+          "It becomes highly random, creative, and prone to wild tangents.",
+          "It completely shuts down and outputs empty tokens.",
+          "It enters greedy/deterministic mode, almost always selecting the highest-probability token.",
+          "It switches from English to binary assembly code."
+        ],
+        correct: 2,
+        explanation: "Exactly! Low temperature sharply magnifies top logits, making responses predictable and reproducible (great for code)."
+      },
+      {
+        question: "Why does an LLM 'hallucinate' plausible-sounding falsehoods?",
+        options: [
+          "It is trained to minimize next-token statistical error, not to verify objective ground truth against a factual database.",
+          "A malicious hacker infected the weights with fake citations.",
+          "The model gets tired after processing too many tokens.",
+          "The training data was completely blank."
+        ],
+        correct: 0,
+        explanation: "Spot on! The model's loss function optimizes for linguistic likelihood. It has no intrinsic verification engine unless paired with external tools or retrieval (RAG)."
+      }
+    ];
+
+    let currentQIdx = 0;
+    let score = 0;
+    let answered = false;
+
+    const quizCounter = document.getElementById('quiz-counter');
+    const quizScore = document.getElementById('quiz-score');
+    const quizQuestion = document.getElementById('quiz-question');
+    const quizOptions = document.getElementById('quiz-options');
+    const quizFeedback = document.getElementById('quiz-feedback');
+    const btnQuizNext = document.getElementById('btn-quiz-next');
+
+    function loadQuestion() {
+      answered = false;
+      quizFeedback.classList.add('hidden');
+      btnQuizNext.classList.add('hidden');
+
+      const q = quizData[currentQIdx];
+      quizCounter.textContent = `Question ${currentQIdx + 1} of ${quizData.length}`;
+      quizScore.textContent = `Score: ${score} / ${quizData.length}`;
+      quizQuestion.textContent = q.question;
+
+      quizOptions.innerHTML = '';
+      q.options.forEach((optText, optIdx) => {
+        const btn = document.createElement('button');
+        btn.className = 'w-full text-left p-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-sm hover:border-cyan-500/50 hover:bg-slate-800/60 transition flex items-start gap-3';
+        btn.innerHTML = `<span class="w-6 h-6 rounded-full bg-slate-800 text-slate-400 text-xs flex items-center justify-center shrink-0 font-mono mt-0.5">${String.fromCharCode(65 + optIdx)}</span><span>${optText}</span>`;
+        
+        btn.addEventListener('click', () => selectAnswer(optIdx, btn));
+        quizOptions.appendChild(btn);
+      });
+    }
+
+    function selectAnswer(optIdx, clickedBtn) {
+      if (answered) return;
+      answered = true;
+
+      const q = quizData[currentQIdx];
+      const buttons = quizOptions.querySelectorAll('button');
+
+      if (optIdx === q.correct) {
+        score++;
+        clickedBtn.classList.remove('bg-slate-900', 'border-slate-800');
+        clickedBtn.classList.add('bg-emerald-950/60', 'border-emerald-500', 'text-emerald-200');
+        quizFeedback.className = 'p-4 rounded-xl mb-6 text-sm bg-emerald-950/40 border border-emerald-800 text-emerald-200';
+        quizFeedback.innerHTML = `<strong>Correct!</strong> ${q.explanation}`;
+      } else {
+        clickedBtn.classList.remove('bg-slate-900', 'border-slate-800');
+        clickedBtn.classList.add('bg-red-950/60', 'border-red-500', 'text-red-200');
+        // Highlight correct
+        buttons[q.correct].classList.add('border-emerald-500', 'bg-emerald-950/40', 'text-emerald-200');
+        quizFeedback.className = 'p-4 rounded-xl mb-6 text-sm bg-red-950/40 border border-red-800 text-red-200';
+        quizFeedback.innerHTML = `<strong>Not quite.</strong> ${q.explanation}`;
+      }
+
+      quizScore.textContent = `Score: ${score} / ${quizData.length}`;
+      quizFeedback.classList.remove('hidden');
+
+      if (currentQIdx < quizData.length - 1) {
+        btnQuizNext.textContent = 'Next Question →';
+        btnQuizNext.classList.remove('hidden');
+      } else {
+        btnQuizNext.textContent = `See Final Certificate (${score}/${quizData.length})`;
+        btnQuizNext.classList.remove('hidden');
+      }
+    }
+
+    btnQuizNext.addEventListener('click', () => {
+      if (currentQIdx < quizData.length - 1) {
+        currentQIdx++;
+        loadQuestion();
+      } else {
+        // Complete view
+        quizQuestion.textContent = `🎉 Masterclass Complete! You scored ${score} out of ${quizData.length}.`;
+        quizOptions.innerHTML = `
+          <div class="p-6 rounded-xl bg-slate-900 border border-cyan-500/40 text-center space-y-3">
+            <div class="text-4xl">🎓</div>
+            <h4 class="text-xl font-bold text-white">Certified LLM Mental Model</h4>
+            <p class="text-sm text-slate-300">You now possess a rigorous, end-to-end understanding of tokenization, embeddings, attention layers, and stochastic sampling.</p>
+            <button onclick="location.reload()" class="mt-4 px-6 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition">
+              Restart Masterclass
+            </button>
+          </div>
+        `;
+        quizFeedback.classList.add('hidden');
+        btnQuizNext.classList.add('hidden');
+      }
+    });
+
+    loadQuestion();
+  </script>
+</body>
+</html>
